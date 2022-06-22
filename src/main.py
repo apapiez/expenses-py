@@ -3,10 +3,18 @@ import PySimpleGUI as sg
 import sys
 from classes import Transaction, select_db_window, Database, Sql, view_transaction_window
 from global_constants import *
+import configparser
+import os
+
+cfg_path = os.path.join(os.path.dirname(__file__), 'config.ini')
 
 class MainWindow:
     def __init__(self):
-        self.db_path = None
+        self._config_parser = configparser.ConfigParser()
+        self._config_parser.read(cfg_path)
+        print(self._config_parser.sections())
+        self.db_path = self._config_parser['DATABASE']['db_path']
+        Database.db_path = self.db_path
         self.temp_attachments = []
         self.menu_def = [['&File', ['&Open database...::open_db_key']],]
         self.tab1_layout = [
@@ -32,6 +40,7 @@ class MainWindow:
         ]
         
         self.window = sg.Window('Expense Tracker', self.layout)
+        self.window.Finalize()
 
     def update_transactions(self):
         self.window['expenses'].update(values=Database.get_all_transactions())
@@ -93,9 +102,6 @@ class MainWindow:
         if len(self.values['expenses']) == 0:
             sg.Popup('Please select a transaction')
             return
-        if len(self.window['expenses'].values) == 0:
-            sg.Popup('There are no transactions to view!')
-            return
         self.window.Hide()
         w = view_transaction_window(self, transaction=self.values['expenses'][0])
         w.run()
@@ -109,6 +115,8 @@ class MainWindow:
 
 
     def start(self):
+        if self.db_path not in ['', None]:
+            self.update_transactions()
         while True:
             event, values = self.window.read()
             self.event, self.values = event, values #hack becuase I need to refactor
@@ -118,6 +126,9 @@ class MainWindow:
                 self.window.Hide()
                 w = select_db_window(self)
                 w.run()
+                self._config_parser['DATABASE']['db_path'] = Database.db_path
+                with open(cfg_path, 'w') as configfile:
+                    self._config_parser.write(configfile)
                 self.update_transactions()
                 self.window.UnHide()                
             elif event == sg.WIN_CLOSED:
