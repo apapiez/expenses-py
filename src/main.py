@@ -1,14 +1,19 @@
 from select import select
 import PySimpleGUI as sg
 import sys
-from classes import Transaction, select_db_window, Database, Sql, view_transaction_window, choose_attachment_window
+from classes import Transaction, select_db_window, Database, Sql, view_transaction_window, choose_attachment_window, FileOperations
 from global_constants import *
 import configparser
 import os
+import atexit
+
+
 
 
 
 cfg_path = os.path.join(os.path.dirname(__file__), 'config.ini')
+atexit.register(FileOperations.delete_temp_dir)
+
 
 
 class MainWindow:

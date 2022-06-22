@@ -3,7 +3,23 @@ import sqlite3 as sql
 from abc import ABC, abstractmethod
 import os
 import re
-import subprocess, platform, tempfile
+import subprocess, platform, tempfile, shutil
+
+class FileOperations(ABC):
+    
+    temp_dir = tempfile.mkdtemp()
+    
+
+    @abstractmethod
+    def delete_temp_dir():
+        shutil.rmtree(FileOperations.temp_dir)
+
+    @abstractmethod
+    def generate_filename():
+        for i in range(1, 1000):
+            yield "temp" + str(i)
+
+    filename = generate_filename()
 
 class Sql:
     """
@@ -571,11 +587,14 @@ class view_transaction_window:
         #open the attachment in the default program
         attachment = self.values['attachments'][0]
         filetype_string = '.' + attachment.filetype
-        tmp = tempfile.NamedTemporaryFile(suffix=filetype_string, mode='w+b')
-        tmp.write(attachment.data())
-        tmp.seek(0)
-        os.startfile(tmp.name)
-        self.temporary_files.append(tmp)
+        x = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir))
+        print(FileOperations.temp_dir)
+        filepath = os.path.join(FileOperations.temp_dir, next(FileOperations.filename))
+        filepath = filepath + filetype_string
+        with open(filepath, 'wb') as f:
+            file_data = Database.get_data_for_file(attachment.id)
+            f.write(file_data)
+        os.startfile(filepath)
 
 
 
