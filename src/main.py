@@ -8,9 +8,6 @@ import os
 import atexit
 
 
-
-
-
 cfg_path = os.path.join(os.path.dirname(__file__), 'config.ini')
 atexit.register(FileOperations.delete_temp_dir)
 
