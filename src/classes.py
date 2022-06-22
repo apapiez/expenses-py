@@ -529,7 +529,7 @@ class view_transaction_window:
             [sg.Text('Notes')],
             [sg.Multiline(transaction.notes, size=(40, 10))],
             [sg.Text('Attachments')],
-            [sg.Listbox(values=transaction.attachments, size=(40, 10))],
+            [sg.Listbox(values=Database.get_attachments_for_transaction(transaction.id), size=(40, 10))],
             [sg.Button('View attachment', key=lambda: self.view_attachment_callback())],
             [sg.Button('OK', key=lambda: self.ok_button_callback())]
         ]

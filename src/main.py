@@ -33,7 +33,7 @@ class MainWindow:
             [sg.Text('Attachments', size=SIZE_LHS), sg.Push(), sg.Listbox(values=self.temp_attachments, size=(40, 10), key='attachments')],
             [sg.Push(), sg.Button('Add', key=lambda values: self.choose_attachment(values)), sg.Button('Remove', key=lambda values: self.remove_attachment(v=values))],
             [sg.Text('Notes', size=SIZE_LHS), sg.Push(), sg.Multiline(key='notes', size=(40, 10))],
-            [sg.Button('Add', key=lambda values: self.dance(values))],
+            [sg.Button('Add', key=lambda values: self.add_transaction_callback())],
             [sg.Button('Clear', key=lambda values: print(values))]
         ]
         self.layout = [
@@ -91,6 +91,27 @@ class MainWindow:
         selected_transaction : Transaction = self.values['expenses'][0]
         Database.delete_transaction(selected_transaction.id)
         self.update_transactions()
+
+    def add_transaction_callback(self, *args, **kwargs):
+        if Database.db_path in ['', None]:
+            sg.Popup('Please open a database first')
+            return
+        transaction = Transaction()
+        transaction.amount = self.values['amount']
+        transaction.date = self.values['date']
+        transaction.name = self.values['name']
+        transaction.notes = self.values['notes']
+        transaction.attachments = self.temp_attachments
+        Database.add_transaction(transaction)
+        self.update_transactions()
+        self.temp_attachments = []
+        self.update_temp_attachments()  
+        self.window['name'].update('')
+        self.window['amount'].update('')
+        self.window['date'].update('')
+        self.window['notes'].update('')
+        
+
 
 
 
