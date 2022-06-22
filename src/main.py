@@ -10,6 +10,7 @@ import os
 
 cfg_path = os.path.join(os.path.dirname(__file__), 'config.ini')
 
+
 class MainWindow:
     def __init__(self):
         self._config_parser = configparser.ConfigParser()
@@ -88,6 +89,12 @@ class MainWindow:
         self.window.UnHide()
 
     def delete_button_callback(self, *args, **kwargs):
+        if Database.db_path in ['', None]:
+            sg.Popup('Please open a database first')
+            return
+        if len(self.values['expenses']) == 0:
+            sg.Popup('Please select a transaction')
+            return
         selected_transaction : Transaction = self.values['expenses'][0]
         Database.delete_transaction(selected_transaction.id)
         self.update_transactions()

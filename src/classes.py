@@ -2,7 +2,8 @@ import PySimpleGUI as sg
 import sqlite3 as sql
 from abc import ABC, abstractmethod
 import os
-
+import re
+import subprocess, platform, tempfile
 
 class Sql:
     """
@@ -134,6 +135,14 @@ class Database(ABC):
                     INSERT INTO attachments (transaction_id, name, filepath)
                     VALUES (?, ?, ?)
                     ''', (transaction_id, attachment.name, attachment.filepath))
+                filedata = open(attachment.filepath, 'rb').read()
+                fileID = cursor.lastrowid
+                cursor.execute('''
+                    INSERT INTO filedata (fileID, data)
+                    VALUES (?, ?)
+                    ''', (fileID, filedata))
+                    
+
 
     @staticmethod
     def get_all_transactions():
@@ -186,7 +195,7 @@ class Database(ABC):
                 ''', (transaction_id,))
             attachments = []
             for row in cursor.fetchall():
-                attachment = Attachment(row[2], row[3])
+                attachment = Attachment(id=row[0], transaction_id=row[1], name=row[2], filepath=row[3])
                 attachments.append(attachment)
             return attachments
 
@@ -206,6 +215,16 @@ class Database(ABC):
                 DELETE FROM attachments
                 WHERE transaction_id = ?
                 ''', (transaction_id,))
+
+    @staticmethod
+    def delete_file_data_from_attachment(attachment_id):
+        with Sql(Database.db_path) as cursor:
+            cursor.execute('''
+                DELETE FROM filedata
+                WHERE fileID = ?
+                ''', (attachment_id,))
+
+
     
     @staticmethod
     def modify_transaction(transaction):
@@ -255,13 +274,23 @@ class Database(ABC):
     @staticmethod
     def get_next_attachment_id():
         with Sql(Database.db_path) as cursor:
+            #get the number of rows in the table
             cursor.execute('''
-                SELECT MAX(id) FROM attachments
-                '''
+                SELECT COUNT(*) FROM filedata
+                            
+            '''
             )
-            if cursor.fetchone()[0] is None:
-                return 1
             return cursor.fetchone()[0] + 1
+
+    @staticmethod
+    def get_data_for_file(fileID):
+        with Sql(Database.db_path) as cursor:
+            cursor.execute('''
+                SELECT * FROM filedata
+                WHERE fileID = ?
+                ''', (fileID,))
+            for row in cursor.fetchall():
+                return row[2]
 
 
 
@@ -357,11 +386,21 @@ class Attachment:
         
     '''
     
-    def __init__(self, filepath):
-        self.id = Database.get_next_attachment_id()
-        self.name, self.filetype = os.path.splitext(filepath)
-        self.filepath = filepath
-        self.data = ''
+    def __init__(self, *args, **kwargs):
+        self.id = None
+        self.name = ''
+        self.filepath = ''
+        self.filetype = ''
+        for key, value in kwargs.items():
+            setattr(self, key, value)
+
+        if self.name == '' or self.filetype == '':
+            self.parse_filename()
+
+        self.data = lambda: Database.get_data_for_file(self.id) #to allow for lazy loading of data
+        if self.id == None:
+            self.id = Database.get_next_attachment_id()
+        
         print(f"attachment created, id: {self.id}, name: {self.name}, filetype: {self.filetype}, filepath: {self.filepath}")
     
     def __str__(self):
@@ -381,24 +420,16 @@ class Attachment:
         with open(name, 'wb') as f:
             f.write(blob)
 
-    def get_file_type(self, path):
+    def parse_filename(self):
         '''
-        returns the file type of a file
+        parses the filename of the file
         '''
-        return path.split('.')[-1]
+        regex_string = r'/(?P<filename>[\w]+)\.(?P<filetype>[\w]+)'
+        regex = re.compile(regex_string)
+        match = regex.search(self.filepath)
+        self.name = match.group('filename')
+        self.filetype = match.group('filetype')
 
-    def get_file_name(self, path):
-        '''
-        returns the file name of a file
-        '''
-        return path.split('/')[-1]
-
-    def get_raw_data(self):
-        '''
-        gets the raw data of the file from the database
-        '''
-        data = get_attachment_from_db(self.id)
-        self.data = data[0]
 
 
         
@@ -517,6 +548,7 @@ class view_transaction_window:
         self.layout = self._create_layout(transaction)
         self.window = sg.Window("View transaction", layout = self.layout)
         self.transaction = transaction
+        self.temporary_files = []
 
     def _create_layout(self, transaction):
         '''
@@ -529,20 +561,31 @@ class view_transaction_window:
             [sg.Text('Notes')],
             [sg.Multiline(transaction.notes, size=(40, 10))],
             [sg.Text('Attachments')],
-            [sg.Listbox(values=Database.get_attachments_for_transaction(transaction.id), size=(40, 10))],
+            [sg.Listbox(values=Database.get_attachments_for_transaction(transaction.id), size=(40, 10), key='attachments')],
             [sg.Button('View attachment', key=lambda: self.view_attachment_callback())],
             [sg.Button('OK', key=lambda: self.ok_button_callback())]
         ]
         return layout
 
     def view_attachment_callback(self):
-        pass
+        #open the attachment in the default program
+        attachment = self.values['attachments'][0]
+        filetype_string = '.' + attachment.filetype
+        tmp = tempfile.NamedTemporaryFile(suffix=filetype_string, mode='w+b')
+        tmp.write(attachment.data())
+        tmp.seek(0)
+        os.startfile(tmp.name)
+        self.temporary_files.append(tmp)
+
+
 
     def ok_button_callback(self):
         '''
         Closes the window
         '''
         self.close_window = True
+        for tmp in self.temporary_files:
+            tmp.close()
     
     def run(self):
         '''
@@ -600,14 +643,21 @@ class choose_attachment_window:
             [sg.Text('Select attachment')],
             [sg.InputText(key='attachment_path'), sg.FileBrowse(target='attachment_path')],
             [sg.Button('OK', key=lambda: self.ok_button_callback())],
-            [sg.Button('Cancel', key='-CANCEL-')]
+            [sg.Button('Cancel', key=lambda: self.cancel_button_callback())]
         ]
         return layout
 
     def ok_button_callback(self):
-        attachment = Attachment(self.values['attachment_path'])
+        if self.values['attachment_path'] == '':
+            sg.popup('Please select an attachment')
+            return
+        attachment = Attachment(filepath=self.values['attachment_path'])
         self.parent.temp_attachments.append(attachment)
         self.close_window = True
+
+    def cancel_button_callback(self):
+        self.close_window = True
+        
 
     def run(self):
         '''
