@@ -1,10 +1,12 @@
 from select import select
 import PySimpleGUI as sg
 import sys
-from classes import Transaction, select_db_window, Database, Sql, view_transaction_window
+from classes import Transaction, select_db_window, Database, Sql, view_transaction_window, choose_attachment_window
 from global_constants import *
 import configparser
 import os
+
+
 
 cfg_path = os.path.join(os.path.dirname(__file__), 'config.ini')
 
@@ -16,6 +18,7 @@ class MainWindow:
         self.db_path = self._config_parser['DATABASE']['db_path']
         Database.db_path = self.db_path
         self.temp_attachments = []
+        self.transactions = []
         self.menu_def = [['&File', ['&Open database...::open_db_key']],]
         self.tab1_layout = [
             [sg.Text('Expenses')],
@@ -43,7 +46,11 @@ class MainWindow:
         self.window.Finalize()
 
     def update_transactions(self):
-        self.window['expenses'].update(values=Database.get_all_transactions())
+        self.transactions = Database.get_all_transactions()
+        self.window['expenses'].update(values=self.transactions)
+
+    def update_temp_attachments(self):
+        self.window['attachments'].update(values=self.temp_attachments)
 
     def add_test_transaction(self, *args, **kwargs):
         if Database.db_path in ['', None]:
@@ -58,42 +65,15 @@ class MainWindow:
         self.update_transactions()
 
     def choose_attachment(self, *args, **kwargs):
-        CLOSE = False
-
-        def attachment_chosen(*args, **kwargs):
-            self.temp_attachments.append(values['attachment_path'])
-            self.window['attachments'].update(values=self.temp_attachments)
-            nonlocal CLOSE
-            CLOSE = True
-
-        def attachment_cancelled(*args, **kwargs):
-            nonlocal CLOSE
-            CLOSE = True
-
-
-        layout = [
-            [sg.Text("Choose an attachment"), sg.InputText(key='attachment_path'), sg.FileBrowse(target='attachment_path')],
-            [sg.Button('Add', key=lambda values: attachment_chosen(values)), sg.Button('Cancel', key = lambda values: attachment_cancelled(values))]
-            ]
-
-        window = sg.Window('Choose an attachment', layout)
-
-        while CLOSE == False:
-            event, values = window.read()
-            if event == 'Exit':
-                break
-            elif event == sg.WIN_CLOSED:
-                break
-            elif callable(event):
-                event(values)
-        
-        if CLOSE == True:
-            window.close()
-    
+        w = choose_attachment_window(self)
+        self.window.Hide()
+        w.run()
+        self.update_temp_attachments()
+        self.window.UnHide()
 
     def remove_attachment(self, *args, **kwargs):
-        if ('v' in kwargs):
-            print(kwargs['v'])
+        self.temp_attachments.remove(self.values['attachments'][0])
+        self.update_temp_attachments()
 
     def view_transaction(self, *args, **kwargs):
         if Database.db_path in ['', None]:

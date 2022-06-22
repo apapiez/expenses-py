@@ -1,6 +1,7 @@
 import PySimpleGUI as sg
 import sqlite3 as sql
 from abc import ABC, abstractmethod
+import os
 
 
 class Sql:
@@ -247,8 +248,20 @@ class Database(ABC):
                 SELECT MAX(id) FROM transactions
                 '''
             )
+            if cursor.fetchone()[0] is None:
+                return 1
             return cursor.fetchone()[0] + 1
-   
+    
+    @staticmethod
+    def get_next_attachment_id():
+        with Sql(Database.db_path) as cursor:
+            cursor.execute('''
+                SELECT MAX(id) FROM attachments
+                '''
+            )
+            if cursor.fetchone()[0] is None:
+                return 1
+            return cursor.fetchone()[0] + 1
 
 
 
@@ -344,14 +357,15 @@ class Attachment:
         
     '''
     
-    def __init__(self):
-        self.name = ''
-        self.path = ''
-        self.filetype = ''
+    def __init__(self, filepath):
+        self.id = Database.get_next_attachment_id()
+        self.name, self.filetype = os.path.splitext(filepath)
+        self.filepath = filepath
         self.data = ''
+        print(f"attachment created, id: {self.id}, name: {self.name}, filetype: {self.filetype}, filepath: {self.filepath}")
     
     def __str__(self):
-        return '{} {}'.format(self.name, self.path)
+        return '{} {}'.format(self.name, self.filepath)
 
     def file_to_blob(self, file):
         '''
@@ -544,3 +558,69 @@ class view_transaction_window:
             elif self.event == sg.WIN_CLOSED:
                 self.window.close()
                 break
+
+class choose_attachment_window:
+    """
+    A window to choose an attachment to add to a transaction
+    
+        Attributes
+        ----------
+        _parent : MainWindow
+            The parent window which created the current window
+        
+        layout : list[list]
+            The layout of the window
+
+        window : sg.Window
+            The window object
+
+        Methods
+        -------
+        _create_layout : list[list]
+            Builds the window layout and returns it to the caller
+
+        ok_button_callback : None   
+            Closes the window
+
+        run : None
+            The mainloop of the window
+
+    """
+    def __init__(self, parent):
+        self.close_window = False
+        self.parent = parent
+        self.layout = self._create_layout()
+        self.window = sg.Window("Choose attachment", layout = self.layout)
+
+    def _create_layout(self):
+        '''
+        Returns layout for the window
+        '''
+        layout = [
+            [sg.Text('Select attachment')],
+            [sg.InputText(key='attachment_path'), sg.FileBrowse(target='attachment_path')],
+            [sg.Button('OK', key=lambda: self.ok_button_callback())],
+            [sg.Button('Cancel', key='-CANCEL-')]
+        ]
+        return layout
+
+    def ok_button_callback(self):
+        attachment = Attachment(self.values['attachment_path'])
+        self.parent.temp_attachments.append(attachment)
+        self.close_window = True
+
+    def run(self):
+        '''
+        Mainloop for the window
+        '''
+        while True:
+            self.event, self.values = self.window.Read()
+            if callable(self.event):
+                self.event()
+                if self.close_window:
+                    self.window.Close()
+                    break
+            elif self.event == sg.WIN_CLOSED:
+                self.window.close()
+                break
+
