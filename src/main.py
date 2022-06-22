@@ -1,8 +1,8 @@
+from select import select
 import PySimpleGUI as sg
 import sys
-from classes import Transaction
+from classes import Transaction, select_db_window, Database, Sql, view_transaction_window
 from global_constants import *
-from functions import *
 
 class MainWindow:
     def __init__(self):
@@ -12,7 +12,7 @@ class MainWindow:
         self.tab1_layout = [
             [sg.Text('Expenses')],
             [sg.Listbox(values=[], key='expenses', size=(50, 25))],
-            [sg.Button('View'), sg.Button('Delete')]
+            [sg.Button('View', key=lambda values: self.view_transaction()), sg.Button('Delete', key=lambda values: self.delete_button_callback())]
         ]
         self.tab2_layout = [
             [sg.Text('New Expense')],
@@ -33,13 +33,20 @@ class MainWindow:
         
         self.window = sg.Window('Expense Tracker', self.layout)
 
+    def update_transactions(self):
+        self.window['expenses'].update(values=Database.get_all_transactions())
+
     def add_test_transaction(self, *args, **kwargs):
+        if Database.db_path in ['', None]:
+            sg.Popup('Please open a database first')
+            return
         test_transaction = Transaction()
         test_transaction.amount = 100
         test_transaction.date = '2020-01-01'
         test_transaction.name = 'test'
         test_transaction.notes = 'test'
-        self.window['expenses'].update(values=[test_transaction])
+        Database.add_transaction(test_transaction)
+        self.update_transactions()
 
     def choose_attachment(self, *args, **kwargs):
         CLOSE = False
@@ -79,14 +86,40 @@ class MainWindow:
         if ('v' in kwargs):
             print(kwargs['v'])
 
+    def view_transaction(self, *args, **kwargs):
+        if Database.db_path in ['', None]:
+            sg.Popup('Please open a database first')
+            return
+        if len(self.values['expenses']) == 0:
+            sg.Popup('Please select a transaction')
+            return
+        if len(self.window['expenses'].values) == 0:
+            sg.Popup('There are no transactions to view!')
+            return
+        self.window.Hide()
+        w = view_transaction_window(self, transaction=self.values['expenses'][0])
+        w.run()
+        self.window.UnHide()
+
+    def delete_button_callback(self, *args, **kwargs):
+        selected_transaction : Transaction = self.values['expenses'][0]
+        Database.delete_transaction(selected_transaction.id)
+        self.update_transactions()
+
+
+
     def start(self):
         while True:
             event, values = self.window.read()
+            self.event, self.values = event, values #hack becuase I need to refactor
             if event == 'Exit':
                 break
-            elif event != None and 'open_db_key' in event:
-                self.db_path = select_db()
-                
+            elif not callable(event) and event != None and 'open_db_key' in event :
+                self.window.Hide()
+                w = select_db_window(self)
+                w.run()
+                self.update_transactions()
+                self.window.UnHide()                
             elif event == sg.WIN_CLOSED:
                 break
             elif callable(event):
@@ -94,6 +127,7 @@ class MainWindow:
 
     def dance(self):
         print('dance')
+        
 
 if __name__ == '__main__':
     window = MainWindow()

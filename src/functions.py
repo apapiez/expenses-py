@@ -1,26 +1,20 @@
-import sqlite3 as sql
 import PySimpleGUI as sg
-from classes import Transaction
+from classes import Transaction, Sql
 Attachment = lambda name, filepath: (name, filepath)
 
-#context manager for sqlite3
-class Sql:
-    def __init__(self, db_path):
-        self.db_path = db_path
-        self.conn = None
-        self.cursor = None
 
-    def __enter__(self):
-        self.conn = sql.connect(self.db_path)
-        self.cursor = self.conn.cursor()
-        return self.cursor
 
-    def __exit__(self, exc_type, exc_value, traceback):
-        self.conn.commit()
-        self.conn.close()
 
-#prepare tables
 def prepare_tables(db_path):
+    '''
+    Creates the required database tables if they aren't there
+    
+    Parameters:
+        db_path (str) : the path to the database
+
+    Returns:
+        None
+    '''
     with Sql(db_path) as cursor:
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS transactions (
@@ -40,8 +34,29 @@ def prepare_tables(db_path):
                 filepath TEXT
                 )'''
         )
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS filedata (
+                id INTEGER PRIMARY KEY,
+                fileID INTEGER,
+                data BLOB
+                )'''
+        )
+            
 
 def add_transaction(db_path, transaction):
+    '''
+    Enters a new transaction into the transactions table
+    Enters the associated attachments into the attachments table
+
+    Parameters:
+        db_path (str) : the path to the current database
+        transaction (Transaction) : the transaction to add
+
+    Returns:
+        None
+    '''
+
+
     with Sql(db_path) as cursor:
         cursor.execute('''
             INSERT INTO transactions (name, amount, date, notes)
@@ -55,6 +70,18 @@ def add_transaction(db_path, transaction):
                 ''', (transaction_id, attachment.name, attachment.filepath))
 
 def get_all_transactions(db_path):
+    '''
+    Gets all transactions currently in the transactions table
+
+    Parameters:
+        db_path (str) : the path to the current database
+
+    Returns:
+        transactions (list[Transaction]) : the list of transactions in the database
+        Does not populate the attachments list for each transaction -> see get_attachments_for_transaction
+    
+    '''
+
     with Sql(db_path) as cursor:
         cursor.execute('''
             SELECT * FROM transactions
@@ -72,6 +99,18 @@ def get_all_transactions(db_path):
         return transactions
 
 def get_attachments_for_transaction(db_path, transaction_id):
+    '''
+    Gets all the attachments associated with a given transaction
+
+    Parameters:
+        db_path (str) : the path to the current database
+        transaction_id (int) : the id of the transaction to fetch attachments for
+    
+    Returns:
+        attachments (list[Attachment]) : A list of attachment objects where the 
+        transaction_id parameter in the table matches the transaction_id parameter
+
+    '''
     with Sql(db_path) as cursor:
         cursor.execute('''
             SELECT * FROM attachments
@@ -111,28 +150,25 @@ def modify_transaction(db_path, transaction):
                 VALUES (?, ?, ?)
                 ''', (transaction.id, attachment.name, attachment.filepath))    
 
-def select_db():
-    CLOSE = False
+# a function that takes an attachment and reads the file data into a bytestring then inserts it into the filedata table
+def add_attachment_to_db(db_path, attachment):
+    with Sql(db_path) as cursor:
+        cursor.execute('''
+            INSERT INTO filedata (fileID, data)
+            VALUES (?, ?)
+            ''', (attachment.fileID, attachment.data))
 
-    def close_window():
-        nonlocal CLOSE
-        CLOSE = True
+# a function that takes an attachment and retrieves the file data from the filedata table
+def get_attachment_from_db(db_path, attachment):
+    with Sql(db_path) as cursor:
+        cursor.execute('''
+            SELECT * FROM filedata
+            WHERE fileID = ?
+            ''', (attachment.fileID,))
+        for row in cursor.fetchall():
+            attachment.data = row[2]
 
-    layout = [
-        [sg.Text('Select database')],
-        [sg.InputText(key='db_path'), sg.FileBrowse(target='db_path')],
-        [sg.Button('OK'), sg.Button('Cancel')]
-    ]
-    window = sg.Window('Select database', layout)
-    
-    while CLOSE == False:
-        event, values = window.read()
-        if event == 'OK':
-            close_window()
-            return values['db_path']
-        elif event == 'Cancel':
-            close_window()
-            return None
+
 
         
 
